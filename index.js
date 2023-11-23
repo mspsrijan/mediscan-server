@@ -20,9 +20,30 @@ const client = new MongoClient(uri, {
   },
 });
 
+app.get("/", (req, res) => {
+  res.send("Job Verse Server");
+});
+app.listen(port);
+
 async function run() {
   try {
     client.connect();
+
+    const usersCollection = client.db("JobVerse").collection("users");
+
+    app.post("/users", async (req, res) => {
+      const newUser = req.body;
+      const existingUser = await usersCollection.findOne({
+        email: newUser.email,
+      });
+
+      if (existingUser) {
+        res.status(400).send("Email already exists");
+      } else {
+        const user = await usersCollection.insertOne(newUser);
+        res.send(user);
+      }
+    });
 
     await client.db("admin").command({ ping: 1 });
     console.log(
