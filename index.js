@@ -92,10 +92,35 @@ async function run() {
       res.send(result);
     });
 
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
+    // Job Applications
+    const jobApplicationsCollection = client
+      .db("JobVerse")
+      .collection("jobApplications");
+
+    app.get("/applied-jobs", verifyToken, async (req, res) => {
+      const email = req.query.email;
+      const query = { applicantEmail: email };
+      const result = await jobApplicationsCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    app.post("/job-applications", verifyToken, async (req, res) => {
+      const jobApplication = req.body;
+
+      const jobId = new ObjectId(jobApplication.jobId);
+      await jobsCollection.updateOne(
+        { _id: jobId },
+        { $inc: { applicants: 1 } }
+      );
+
+      const result = await jobApplicationsCollection.insertOne(jobApplication);
+      res.send(result);
+    });
+
+    // await client.db("admin").command({ ping: 1 });
+    // console.log(
+    //   "Pinged your deployment. You successfully connected to MongoDB!"
+    // );
   } finally {
     //await client.close();
   }
