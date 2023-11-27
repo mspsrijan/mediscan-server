@@ -40,18 +40,53 @@ async function run() {
     });
 
     // JWT Middleware
-    const verifyToken = (req, res, next) => {
+    const verifyToken = async (req, res, next) => {
       if (!req.headers.authorization) {
         return res.status(401).send({ message: "Unauthorized Access" });
       }
+
       const token = req.headers.authorization.split(" ")[1];
-      jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
-        if (err) {
-          return res.status(401).send({ message: "Unauthorized Access" });
+      jwt.verify(
+        token,
+        process.env.ACCESS_TOKEN_SECRET,
+        async (err, decoded) => {
+          if (err) {
+            return res.status(401).send({ message: "Unauthorized Access" });
+          }
+
+          req.decoded = decoded;
+
+          try {
+            const user = await usersCollection.findOne({
+              email: decoded.email,
+            });
+
+            if (!user) {
+              return res.status(403).send({
+                message:
+                  "Forbidden: You do not have permission to perform this action.",
+              });
+            }
+
+            if (req.method === "PATCH") {
+              const jobId = new ObjectId(req.params.id);
+              const job = await jobsCollection.findOne({ _id: jobId });
+
+              if (!job || user.email !== job.recruiterEmail) {
+                return res.status(403).send({
+                  message:
+                    "Forbidden: You do not have permission to perform this action.",
+                });
+              }
+            }
+
+            next();
+          } catch (error) {
+            console.error("Error fetching user or job:", error);
+            res.status(500).send({ message: "Internal Server Error" });
+          }
         }
-        req.decoded = decoded;
-        next();
-      });
+      );
     };
 
     //User Related APIs
@@ -75,21 +110,54 @@ async function run() {
     const jobsCollection = client.db("JobVerse").collection("jobs");
 
     app.get("/jobs", async (req, res) => {
-      const result = await jobsCollection.find().toArray();
-      res.send(result);
+      const jobs = await jobsCollection.find().toArray();
+      res.send(jobs);
     });
 
     app.get("/job/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
-      const result = await jobsCollection.findOne(query);
-      res.send(result);
+      const job = await jobsCollection.findOne(query);
+      res.send(job);
+    });
+
+    app.get("/my-jobs", verifyToken, async (req, res) => {
+      const email = req.query.email;
+      const query = { recruiterEmail: email };
+      const myJobs = await jobsCollection.find(query).toArray();
+      res.send(myJobs);
     });
 
     app.post("/jobs", verifyToken, async (req, res) => {
       const item = req.body;
-      const result = await jobsCollection.insertOne(item);
+      const job = await jobsCollection.insertOne(item);
+      res.send(job);
+    });
+
+    app.patch("/job/:id", verifyToken, async (req, res) => {
+      const job = req.body;
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const updatedJob = {
+        $set: {
+          title: job.title,
+          category: job.category,
+          salaryRange: job.salaryRange,
+          description: job.description,
+          photoUrl: job.photoUrl,
+          applicationDeadline: job.applicationDeadline,
+          applicants: job.applicants,
+        },
+      };
+      const result = await jobsCollection.updateOne(query, updatedJob);
       res.send(result);
+    });
+
+    app.delete("/job/:id", verifyToken, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const job = await jobsCollection.deleteOne(query);
+      res.send(job);
     });
 
     // Job Applications
@@ -116,11 +184,6 @@ async function run() {
       const result = await jobApplicationsCollection.insertOne(jobApplication);
       res.send(result);
     });
-
-    // await client.db("admin").command({ ping: 1 });
-    // console.log(
-    //   "Pinged your deployment. You successfully connected to MongoDB!"
-    // );
   } finally {
     //await client.close();
   }
