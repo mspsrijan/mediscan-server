@@ -30,7 +30,7 @@ async function run() {
   try {
     // await client.connect();
 
-    // JWT Related API
+    // JWT Related APIs
     app.post("/jwt", async (req, res) => {
       const user = req.body;
       const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
@@ -39,7 +39,7 @@ async function run() {
       res.send({ token });
     });
 
-    // JWT Middleware
+    // JWT Middlewares
     const verifyToken = async (req, res, next) => {
       if (!req.headers.authorization) {
         return res.status(401).send({ message: "Unauthorized Access" });
@@ -155,8 +155,9 @@ async function run() {
 
     app.delete("/job/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
-      const query = { _id: new ObjectId(id) };
-      const job = await jobsCollection.deleteOne(query);
+      const jobId = new ObjectId(id);
+      await jobApplicationsCollection.deleteMany({ jobId });
+      const job = await jobsCollection.deleteOne({ _id: jobId });
       res.send(job);
     });
 
