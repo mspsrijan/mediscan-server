@@ -155,9 +155,8 @@ async function run() {
 
     app.delete("/job/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
-      const jobId = new ObjectId(id);
-      await jobApplicationsCollection.deleteMany({ jobId });
-      const job = await jobsCollection.deleteOne({ _id: jobId });
+      const query = { _id: new ObjectId(id) };
+      const job = await jobsCollection.deleteOne(query);
       res.send(job);
     });
 
