@@ -39,7 +39,7 @@ async function run() {
       res.send({ token });
     });
 
-    // JWT Middlewares
+    // JWT Middleware
     const verifyToken = async (req, res, next) => {
       if (!req.headers.authorization) {
         return res.status(401).send({ message: "Unauthorized Access" });
