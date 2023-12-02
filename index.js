@@ -11,7 +11,7 @@ app.use(express.json());
 
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@jobverse.rzay3zj.mongodb.net/?retryWrites=true&w=majority`;
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@mediscan.dtk7xiu.mongodb.net/?retryWrites=true&w=majority`;
 
 const client = new MongoClient(uri, {
   serverApi: {
@@ -22,7 +22,7 @@ const client = new MongoClient(uri, {
 });
 
 app.get("/", (req, res) => {
-  res.send("Job Verse Server");
+  res.send("MediScan Server");
 });
 app.listen(port);
 
@@ -40,57 +40,52 @@ async function run() {
     });
 
     // JWT Middleware
-    const verifyToken = async (req, res, next) => {
+    const verifyToken = (req, res, next) => {
       if (!req.headers.authorization) {
         return res.status(401).send({ message: "Unauthorized Access" });
       }
-
       const token = req.headers.authorization.split(" ")[1];
-      jwt.verify(
-        token,
-        process.env.ACCESS_TOKEN_SECRET,
-        async (err, decoded) => {
-          if (err) {
-            return res.status(401).send({ message: "Unauthorized Access" });
-          }
-
-          req.decoded = decoded;
-
-          try {
-            const user = await usersCollection.findOne({
-              email: decoded.email,
-            });
-
-            if (!user) {
-              return res.status(403).send({
-                message:
-                  "Forbidden: You do not have permission to perform this action.",
-              });
-            }
-
-            if (req.method === "PATCH") {
-              const jobId = new ObjectId(req.params.id);
-              const job = await jobsCollection.findOne({ _id: jobId });
-
-              if (!job || user.email !== job.recruiterEmail) {
-                return res.status(403).send({
-                  message:
-                    "Forbidden: You do not have permission to perform this action.",
-                });
-              }
-            }
-
-            next();
-          } catch (error) {
-            console.error("Error fetching user or job:", error);
-            res.status(500).send({ message: "Internal Server Error" });
-          }
+      jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        if (err) {
+          return res.status(401).send({ message: "Unauthorized Access" });
         }
-      );
+        req.decoded = decoded;
+        next();
+      });
+    };
+
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = { email: email };
+      const user = await usersCollection.findOne(query);
+      const isAdmin = user?.role === "admin";
+      if (!isAdmin) {
+        return res.status(403).send({ message: "Forbidden Access" });
+      }
+      next();
     };
 
     //User Related APIs
-    const usersCollection = client.db("JobVerse").collection("users");
+    const usersCollection = client.db("MediScan").collection("users");
+
+    app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
+      const result = await userCollection.find().toArray();
+      res.send(result);
+    });
+
+    app.get("/users/admin/:email", verifyToken, async (req, res) => {
+      const email = req.params.email;
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: "Forbidden Access" });
+      }
+      const query = { email: email };
+      const user = await usersCollection.findOne(query);
+      let admin = false;
+      if (user) {
+        admin = user?.role === "admin";
+      }
+      res.send({ admin });
+    });
 
     app.post("/users", async (req, res) => {
       const newUser = req.body;
@@ -104,85 +99,6 @@ async function run() {
         const user = await usersCollection.insertOne(newUser);
         res.send(user);
       }
-    });
-
-    //Job Related APIs
-    const jobsCollection = client.db("JobVerse").collection("jobs");
-
-    app.get("/jobs", async (req, res) => {
-      const jobs = await jobsCollection.find().toArray();
-      res.send(jobs);
-    });
-
-    app.get("/job/:id", async (req, res) => {
-      const id = req.params.id;
-      const query = { _id: new ObjectId(id) };
-      const job = await jobsCollection.findOne(query);
-      res.send(job);
-    });
-
-    app.get("/my-jobs", verifyToken, async (req, res) => {
-      const email = req.query.email;
-      const query = { recruiterEmail: email };
-      const myJobs = await jobsCollection.find(query).toArray();
-      res.send(myJobs);
-    });
-
-    app.post("/jobs", verifyToken, async (req, res) => {
-      const item = req.body;
-      const job = await jobsCollection.insertOne(item);
-      res.send(job);
-    });
-
-    app.patch("/job/:id", verifyToken, async (req, res) => {
-      const job = req.body;
-      const id = req.params.id;
-      const query = { _id: new ObjectId(id) };
-      const updatedJob = {
-        $set: {
-          title: job.title,
-          category: job.category,
-          salaryRange: job.salaryRange,
-          description: job.description,
-          photoUrl: job.photoUrl,
-          applicationDeadline: job.applicationDeadline,
-          applicants: job.applicants,
-        },
-      };
-      const result = await jobsCollection.updateOne(query, updatedJob);
-      res.send(result);
-    });
-
-    app.delete("/job/:id", verifyToken, async (req, res) => {
-      const id = req.params.id;
-      const query = { _id: new ObjectId(id) };
-      const job = await jobsCollection.deleteOne(query);
-      res.send(job);
-    });
-
-    // Job Applications
-    const jobApplicationsCollection = client
-      .db("JobVerse")
-      .collection("jobApplications");
-
-    app.get("/applied-jobs", verifyToken, async (req, res) => {
-      const email = req.query.email;
-      const query = { applicantEmail: email };
-      const result = await jobApplicationsCollection.find(query).toArray();
-      res.send(result);
-    });
-
-    app.post("/job-applications", verifyToken, async (req, res) => {
-      const jobApplication = req.body;
-
-      const jobId = new ObjectId(jobApplication.jobId);
-      await jobsCollection.updateOne(
-        { _id: jobId },
-        { $inc: { applicants: 1 } }
-      );
-
-      const result = await jobApplicationsCollection.insertOne(jobApplication);
-      res.send(result);
     });
   } finally {
     //await client.close();
