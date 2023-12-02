@@ -69,7 +69,7 @@ async function run() {
     const usersCollection = client.db("MediScan").collection("users");
 
     app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
-      const result = await userCollection.find().toArray();
+      const result = await usersCollection.find().toArray();
       res.send(result);
     });
 
@@ -99,6 +99,58 @@ async function run() {
         const user = await usersCollection.insertOne(newUser);
         res.send(user);
       }
+    });
+
+    // Banners
+    const bannersCollection = client.db("MediScan").collection("banners");
+
+    app.get("/banners", verifyToken, verifyAdmin, async (req, res) => {
+      const result = await bannersCollection.find().toArray();
+      res.send(result);
+    });
+
+    app.get("/active-banner", verifyToken, verifyAdmin, async (req, res) => {
+      const query = { isActive: true };
+      const activeBanners = await bannersCollection.find(query).toArray();
+      res.send(activeBanners);
+    });
+
+    app.patch("/banner/:id", verifyToken, verifyAdmin, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+
+      const updateTargetedBanner = {
+        $set: {
+          isActive: true,
+        },
+      };
+      const resultTargeted = await bannersCollection.updateOne(
+        query,
+        updateTargetedBanner
+      );
+      const updateOtherBanners = {
+        $set: {
+          isActive: false,
+        },
+      };
+      const resultOtherBanners = await bannersCollection.updateMany(
+        { _id: { $ne: new ObjectId(id) } },
+        updateOtherBanners
+      );
+      res.send(resultTargeted);
+    });
+
+    app.post("/banners", verifyToken, verifyAdmin, async (req, res) => {
+      const newBanner = req.body;
+      const result = await bannersCollection.insertOne(newBanner);
+      res.send(result);
+    });
+
+    app.delete("/banners/:id", verifyToken, verifyAdmin, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await bannersCollection.deleteOne(query);
+      res.send(result);
     });
   } finally {
     //await client.close();
