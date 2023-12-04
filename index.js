@@ -59,7 +59,7 @@ async function run() {
       const email = req.decoded.email;
       const query = { email: email };
       const user = await usersCollection.findOne(query);
-      const isAdmin = user?.role === "admin";
+      const isAdmin = user?.role === "Admin";
       if (!isAdmin) {
         return res.status(403).send({ message: "Forbidden Access" });
       }
@@ -74,6 +74,13 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/user/:id", verifyToken, verifyAdmin, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const user = await usersCollection.findOne(query);
+      res.send(user);
+    });
+
     app.get("/users/admin/:email", verifyToken, async (req, res) => {
       const email = req.params.email;
       if (email !== req.decoded.email) {
@@ -83,7 +90,7 @@ async function run() {
       const user = await usersCollection.findOne(query);
       let admin = false;
       if (user) {
-        admin = user?.role === "admin";
+        admin = user?.role === "Admin";
       }
       res.send({ admin });
     });
@@ -145,6 +152,61 @@ async function run() {
       });
     });
 
+    //Reservations
+    const reservationsCollection = client
+      .db("MediScan")
+      .collection("reservations");
+
+    app.get("/reservations", verifyToken, async (req, res) => {
+      if (req.query.email) {
+        const email = req.query.email;
+        const query = { email: email };
+        const result = await reservationsCollection.find(query).toArray();
+        res.send(result);
+      } else {
+        const result = await reservationsCollection.find().toArray();
+        res.send(result);
+      }
+    });
+
+    app.post("/reservations", verifyToken, async (req, res) => {
+      const newReservation = req.body;
+      const result = await reservationsCollection.insertOne(newReservation);
+
+      const testId = newReservation.testId;
+      const updateSlotsResult = await testsCollection.updateOne(
+        { _id: new ObjectId(testId) },
+        { $inc: { slots: -1 } }
+      );
+
+      const updateReservationsResult = await testsCollection.updateOne(
+        { _id: new ObjectId(testId) },
+        { $inc: { reservations: 1 } }
+      );
+
+      res.send(result);
+    });
+
+    app.delete("/reservation/:id", verifyToken, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const reservation = await reservationsCollection.findOne(query);
+      const testId = reservation.testId;
+      const result = await reservationsCollection.deleteOne(query);
+
+      const updateSlotsResult = await testsCollection.updateOne(
+        { _id: new ObjectId(testId) },
+        { $inc: { slots: 1 } }
+      );
+
+      const updateReservationsResult = await testsCollection.updateOne(
+        { _id: new ObjectId(testId) },
+        { $inc: { reservations: -1 } }
+      );
+
+      res.send(result);
+    });
+
     // Banners
     const bannersCollection = client.db("MediScan").collection("banners");
 
@@ -153,7 +215,7 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/active-banner", verifyToken, verifyAdmin, async (req, res) => {
+    app.get("/active-banner", async (req, res) => {
       const query = { isActive: true };
       const activeBanners = await bannersCollection.find(query).toArray();
       res.send(activeBanners);
